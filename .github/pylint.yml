@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - 'mike/add-pylint'
   pull_request:
     branches:
       - main
