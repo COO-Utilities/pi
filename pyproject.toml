@@ -45,3 +45,6 @@ testpaths = ["tests"]
 [tool.setuptools.packages.find]
 where = ["."]
 
+[tool.setuptools]
+py-modules = ["pi"]
+
