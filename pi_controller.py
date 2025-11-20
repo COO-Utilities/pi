@@ -4,42 +4,54 @@ This module provides a base class for communicating with PI (Physik Instrumente)
 import json
 import os
 import time
-import logging
 from pipython import GCSDevice, GCSError
+from hardware_device_base import HardwareMotionBase
 
 
-class PIControllerBase: # pylint: disable=too-many-public-methods
+# Status codes
+class PIStatus:
+    """Status codes for PI controller operations."""
+    OK = 0
+    CONNECTED = 1
+    MOVING = 2
+    HOMED = 3
+
+    # Error codes (negative)
+    ERROR_NOT_CONNECTED = -1
+    ERROR_CONNECTION_FAILED = -2
+    ERROR_DEVICE_NOT_FOUND = -3
+    ERROR_POSITION = -4
+    ERROR_SERVO = -5
+    ERROR_REFERENCE = -6
+    ERROR_LIMITS = -7
+    ERROR_TIMEOUT = -8
+    ERROR_COMMAND = -9
+    ERROR_INVALID_METHOD = -10
+
+
+class PIControllerBase(HardwareMotionBase):
     """
     Base class for communicating with PI (Physik Instrumente) motion controllers daisy-chained
     over TCP/IP via a terminal server.
     """
 
-    def __init__(self, quiet=False):
+    def __init__(self, log: bool = True):
         """
-        Initialize the controller, set up logging, and prepare device storage.
+        Initialize the controller and set up logging.
         """
+        # set up logging
+        super().__init__(log)
+
         self.devices = {}  # {(ip, port, device_id): GCSDevice instance}
         self.daisy_chains = {}  # {(ip, port): [(device_id, desc)]}
-        self.connected = False
         self.named_position_file = "config/pi_named_positions.json"
-        
-        # Logging
-        logfile = __name__.rsplit('.', 1)[-1] + '.log'
-        self.logger = logging.getLogger(logfile)
-        self.logger.setLevel(logging.INFO)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        if not quiet:
-            file_handler = logging.FileHandler(logfile)
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
 
     def _require_connection(self):
         """
         Raise an error if not connected to any device.
         """
-        if not self.connected:
+        if not self.is_connected():
+            self.report_error("Controller is not connected", PIStatus.ERROR_NOT_CONNECTED)
             raise RuntimeError("Controller is not connected")
 
     def connect_tcp(self, ip_address, port=50000):
@@ -49,8 +61,8 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         device = GCSDevice()
         device.ConnectTCPIP(ip_address, port)
         self.devices[(ip_address, port, 1)] = device
-        self.connected = True
-        self.logger.info("Connected to single PI controller at %s:%s", ip_address, port)
+        self._set_connected(True)
+        self.report_info(f"Connected to single PI controller at {ip_address}:{port}", PIStatus.CONNECTED)
 
     def connect_tcpip_daisy_chain(self, ip_address, port, blocking=True):
         """
@@ -67,6 +79,7 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
                 available.append((index, desc))
 
         if not available:
+            self.report_error(f"No connected devices found at {ip_address}:{port}", PIStatus.ERROR_DEVICE_NOT_FOUND)
             raise RuntimeError(f"No connected devices found at {ip_address}:{port}")
 
         self.daisy_chains[(ip_address, port)] = available
@@ -79,9 +92,9 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
 
             dev.ConnectDaisyChainDevice(device_id, dcid)
             self.devices[(ip_address, port, device_id)] = dev
-            self.logger.info("[{ip}:{port}] Connected to device %s: %s", device_id, desc)
+            self.report_info(f"[{ip_address}:{port}] Connected to device {device_id}: {desc}", PIStatus.CONNECTED)
 
-        self.connected = True
+        self._set_connected(True)
 
         if blocking:
             # Wait until all devices are ready
@@ -95,9 +108,9 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         if device_key in self.devices:
             self.devices[device_key].CloseConnection()
             del self.devices[device_key]
-            self.logger.info("Disconnected device %s", device_key)
+            self.report_info(f"Disconnected device {device_key}", PIStatus.OK)
         if not self.devices:
-            self.connected = False
+            self._set_connected(False)
 
     def disconnect_all(self):
         """
@@ -105,10 +118,10 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         """
         for device_key in list(self.devices.keys()):
             self.devices[device_key].CloseConnection()
-            self.logger.info("Disconnected device %s", device_key)
+            self.logger.debug(f"Disconnected device {device_key}")
         self.devices.clear()
-        self.connected = False
-        self.logger.info("Disconnected from all PI controllers")
+        self._set_connected(False)
+        self.report_info("Disconnected from all PI controllers", PIStatus.OK)
 
     def list_devices_on_chain(self, ip_address, port):
         """
@@ -117,12 +130,6 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         if (ip_address, port) not in self.daisy_chains:
             raise ValueError(f"No daisy chain found at {ip_address}:{port}")
         return self.daisy_chains[(ip_address, port)]
-
-    def is_connected(self) -> bool:
-        """
-        Check if the controller is connected to any device.
-        """
-        return self.connected
 
     def get_idn(self, device_key) -> str:
         """
@@ -145,27 +152,49 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         self._require_connection()
         return self.devices[device_key].axes
 
-    def get_position(self, device_key, axis):
+    def get_pos(self, device_key=None, axis=None):
         """
-        Return the position of the specified axis for the given device.
+        Get the position of the hardware motion device.
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to get position for
+
+        Returns:
+            Position value or None if error
         """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for get_pos", PIStatus.ERROR_POSITION)
+            return None
+
         self._require_connection()
         device = self.devices[device_key]
         try:
             return device.qPOS(axis)[axis]
         except (GCSError, IndexError) as ex:
-            self.logger.error("Error getting position: %s", ex)
+            self.report_error(f"Error getting position: {ex}", PIStatus.ERROR_POSITION)
             return None
 
-    def servo_status(self, device_key, axis):
+    def is_closed_loop(self, device_key=None, axis=None) -> bool:
         """
-        Return True if the servo for the given axis is enabled, False otherwise.
+        Check if the hardware motion device servo is enabled (closed loop).
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to check
+
+        Returns:
+            True if servo is enabled, False otherwise
         """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for is_closed_loop", PIStatus.ERROR_SERVO)
+            return False
+
         self._require_connection()
         try:
             return bool(self.devices[device_key].qSVO(axis)[axis])
         except GCSError as ex:
-            self.logger.error("Error checking servo status: %s", ex)
+            self.report_error(f"Error checking servo status: {ex}", PIStatus.ERROR_SERVO)
             return False
 
     def get_error_code(self, device_key):
@@ -176,7 +205,7 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         try:
             return self.devices[device_key].qERR()
         except GCSError as ex:
-            self.logger.error("Error getting error code: %s", ex)
+            self.report_error(f"Error getting error code: {ex}", PIStatus.ERROR_COMMAND)
             return None
 
     def halt_motion(self, device_key):
@@ -187,22 +216,35 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         try:
             self.devices[device_key].HLT()
         except GCSError as ex:
-            self.logger.error("Error halting motion: %s", ex)
+            self.report_error(f"Error halting motion: {ex}", PIStatus.ERROR_POSITION)
 
-    def set_position(self, device_key, axis, position, blocking=True):
+    def set_pos(self, pos, device_key=None, axis=None, blocking=True) -> bool:
         """
-        Move the specified axis to the given position for the specified device.
-        If blocking=True, wait until move is complete.
+        Set the position.
+
+        Args:
+            pos: Target position
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to move
+            blocking: If True, wait until move is complete
+
+        Returns:
+            True if successful, False otherwise
         """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for set_pos", PIStatus.ERROR_POSITION)
+            return False
+
         self._require_connection()
         try:
-            self.devices[device_key].MOV(axis, position)
+            self.devices[device_key].MOV(axis, pos)
             if blocking:
                 while self.is_moving(device_key, axis):
                     time.sleep(0.1)
-
+            return True
         except GCSError as ex:
-            self.logger.error("Error setting position: %s", ex)
+            self.report_error(f"Error setting position: {ex}", PIStatus.ERROR_POSITION)
+            return False
 
     def set_named_position(self, device_key, axis, name):
         """
@@ -213,10 +255,10 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         try:
             pos = device.qMOV(axis)[axis]
         except (GCSError, OSError, ValueError):
-            pos = self.get_position(device_key, axis)
+            pos = self.get_pos(device_key, axis)
 
         if pos is None:
-            self.logger.warning("Could not get position for axis %s", axis)
+            self.report_warning(f"Could not get position for axis {axis}", PIStatus.ERROR_POSITION)
             return
 
         serial = self.get_serial_number(device_key)
@@ -227,8 +269,8 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
                 try:
                     positions = json.load(file)
                 except json.JSONDecodeError:
-                    self.logger.warning(
-                        "Could not parse JSON from %s", self.named_position_file
+                    self.report_warning(
+                        f"Could not parse JSON from {self.named_position_file}", PIStatus.ERROR_POSITION
                     )
 
         if serial not in positions:
@@ -239,8 +281,8 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         with open(self.named_position_file, "w") as file:
             json.dump(positions, file, indent=2)
 
-        self.logger.info(
-            "Saved position '%s' for controller %s, axis %s: %s", name, serial, axis, pos
+        self.report_info(
+            f"Saved position '{name}' for controller {serial}, axis {axis}: {pos}", PIStatus.OK
         )
 
     def go_to_named_position(self, device_key, name, blocking=True):
@@ -250,8 +292,8 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         serial = self.get_serial_number(device_key)
 
         if not os.path.exists(self.named_position_file):
-            self.logger.warning(
-                "Named positions file not found: %s", self.named_position_file
+            self.report_warning(
+                f"Named positions file not found: {self.named_position_file}", PIStatus.ERROR_POSITION
             )
             return
 
@@ -259,25 +301,25 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
             with open(self.named_position_file, "r") as file:
                 positions = json.load(file)
         except json.JSONDecodeError:
-            self.logger.warning(
-                "Failed to read positions from %s", self.named_position_file
+            self.report_warning(
+                f"Failed to read positions from {self.named_position_file}", PIStatus.ERROR_POSITION
             )
             return
 
         if serial not in positions:
-            self.logger.warning("No named positions found for controller %s", serial)
+            self.report_warning(f"No named positions found for controller {serial}", PIStatus.ERROR_POSITION)
             return
 
         if name not in positions[serial]:
-            self.logger.warning(
-                "Named position '%s' not found for controller %s", name, serial
+            self.report_warning(
+                f"Named position '{name}' not found for controller {serial}", PIStatus.ERROR_POSITION
             )
             return
 
         axis, pos = positions[serial][name]
-        self.set_position(device_key, axis, pos, blocking)
-        self.logger.info(
-            "Moved axis %s to named position '%s' for controller %s: %s", axis, name, serial, pos
+        self.set_pos(pos, device_key, axis, blocking)
+        self.report_info(
+            f"Moved axis {axis} to named position '{name}' for controller {serial}: {pos}", PIStatus.OK
         )
 
     def is_moving(self, device_key, axis):
@@ -285,43 +327,102 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
         self._require_connection()
         return self.devices[device_key].IsMoving(axis)[axis]
 
-    def set_servo(self, device_key, axis, enable=True):
-        """Open (enable) or close (disable) servo loop."""
-        self._require_connection()
-        return self.devices[device_key].SVO(axis, int(enable))
+    def close_loop(self, device_key=None, axis=None, enable=True) -> bool:
+        """
+        Close the loop (enable servo) for the hardware motion device.
+        Can also be used to open the loop (disable servo) by setting enable=False.
 
-    def get_limit_min(self, device_key, axis):
-        """Query stage minimum limit."""
-        self._require_connection()
-        return self.devices[device_key].qTMN(axis)[axis]
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to enable servo for
+            enable: True to close loop (enable servo), False to open loop (disable servo)
 
-    def get_limit_max(self, device_key, axis):
-        """Query stage maximum limit."""
+        Returns:
+            True if successful, False otherwise
+        """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for close_loop", PIStatus.ERROR_SERVO)
+            return False
+
         self._require_connection()
-        return self.devices[device_key].qTMX(axis)[axis]
+        try:
+            self.devices[device_key].SVO(axis, int(enable))
+            self.report_info(f"{'Closed (enabled servo)' if enable else 'Opened (disabled servo)'} loop for device {device_key}, axis {axis}", PIStatus.OK)
+            return True
+        except (GCSError, RuntimeError) as ex:
+            self.report_error(f"Error {'closing' if enable else 'opening'} loop: {ex}", PIStatus.ERROR_SERVO)
+            return False
+
+    def get_limits(self, device_key=None, axis=None):
+        """
+        Get the limits of the hardware motion device.
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to get limits for
+
+        Returns:
+            Dictionary with axis as key and (min, max) tuple as value, or None if error
+        """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for get_limits", PIStatus.ERROR_LIMITS)
+            return None
+
+        self._require_connection()
+        try:
+            min_limit = self.devices[device_key].qTMN(axis)[axis]
+            max_limit = self.devices[device_key].qTMX(axis)[axis]
+            return {axis: (min_limit, max_limit)}
+        except (GCSError, RuntimeError) as ex:
+            self.report_error(f"Error getting limits: {ex}", PIStatus.ERROR_LIMITS)
+            return None
 
     def is_controller_ready(self, device_key):
         """Check if stage/controller is ready."""
         self._require_connection()
         return self.devices[device_key].IsControllerReady()
 
-    def is_controller_referenced(self, device_key, axis):
-        """Check reference/home state for axis."""
+    def is_homed(self, device_key=None, axis=None) -> bool:
+        """
+        Check if the hardware motion device is homed (referenced).
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to check
+
+        Returns:
+            True if axis is referenced, False otherwise
+        """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for is_homed", PIStatus.ERROR_REFERENCE)
+            return False
+
         self._require_connection()
         return self.devices[device_key].qFRF(axis)[axis]
 
-    def reference_move(self, device_key, axis, method="FRF", blocking=True, timeout=30): # pylint:disable=too-many-arguments
+    def home(self, device_key=None, axis=None, method="FRF", blocking=True, timeout=30) -> bool: # pylint:disable=too-many-arguments
         """
-        Execute a reference/home move (FRF, FNL, FPL).
-        method: which command to use ("FRF", "FNL", "FPL")
-        blocking: if True, wait until move is complete
-        Returns True if successful, False otherwise.
+        Home the hardware motion device.
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            axis: Axis to home
+            method: Reference method to use ("FRF", "FNL", "FPL")
+            blocking: If True, wait until homing is complete
+            timeout: Timeout in seconds for blocking operation
+
+        Returns:
+            True if successful, False otherwise
         """
+        if device_key is None or axis is None:
+            self.report_error("device_key and axis are required for home", PIStatus.ERROR_REFERENCE)
+            return False
+
         self._require_connection()
         allowed_methods = {"FRF", "FNL", "FPL"}
         if method not in allowed_methods:
-            self.logger.error(
-                "Invalid reference method: %s. Must be one of %s", method, allowed_methods
+            self.report_error(
+                f"Invalid reference method: {method}. Must be one of {allowed_methods}", PIStatus.ERROR_INVALID_METHOD
             )
             return False
 
@@ -329,27 +430,122 @@ class PIControllerBase: # pylint: disable=too-many-public-methods
 
         # Check if the device supports the specified method
         if not getattr(device, "Has%s", method)():
-            self.logger.error("Device %s does not support method '%s'", device_key, method)
+            self.report_error(f"Device {device_key} does not support method '{method}'", PIStatus.ERROR_INVALID_METHOD)
             return False
 
         try:
             getattr(device, method)(axis)
-            self.logger.info(
-                "Started reference move '%s' on axis %s (device %s)", method, axis, device_key
+            self.report_info(
+                f"Started reference move '{method}' on axis {axis} (device {device_key})", PIStatus.HOMED
             )
             if blocking:
                 start_time = time.time()
                 while self.is_moving(device_key, axis):
                     if time.time() - start_time > timeout:
-                        self.logger.error(
-                            "Reference move timed out after %s seconds on axis %s", timeout, axis
+                        self.report_error(
+                            f"Reference move timed out after {timeout} seconds on axis {axis}", PIStatus.ERROR_TIMEOUT
                         )
                         return False
                     time.sleep(0.1)
 
             return True
         except (GCSError, OSError, ValueError) as ex:
-            self.logger.error(
-                "Error during reference move '%s' on axis %s: %s", method, axis, ex
+            self.report_error(
+                f"Error during reference move '{method}' on axis {axis}: {ex}", PIStatus.ERROR_REFERENCE
             )
             return False
+
+    def connect(self, *args, **kwargs) -> None:
+        """
+        Establish a connection to PI controller(s).
+
+        This method supports multiple connection modes:
+        1. TCP single device: connect(ip_address, port)
+        2. TCP daisy chain: connect(ip_address, port, daisy_chain=True, blocking=True)
+
+        Examples:
+            controller.connect("192.168.1.100", 50000)
+            controller.connect("192.168.1.100", 50000, daisy_chain=True)
+        """
+        if len(args) < 2:
+            self.report_error("connect requires at least ip_address and port", PIStatus.ERROR_CONNECTION_FAILED)
+            return
+
+        ip_address = args[0]
+        port = args[1]
+        daisy_chain = kwargs.get('daisy_chain', False)
+        blocking = kwargs.get('blocking', True)
+
+        try:
+            if daisy_chain:
+                self.connect_tcpip_daisy_chain(ip_address, port, blocking=blocking)
+            else:
+                self.connect_tcp(ip_address, port)
+
+            self._set_connected(True)
+            self.report_info(f"Successfully connected to PI controller at {ip_address}:{port}", PIStatus.CONNECTED)
+        except (GCSError, RuntimeError) as ex:
+            self.report_error(f"Failed to connect: {ex}", PIStatus.ERROR_CONNECTION_FAILED)
+            self._set_connected(False)
+
+    def disconnect(self) -> None:
+        """
+        Disconnect from all PI controller devices.
+        """
+        try:
+            self.disconnect_all()
+            self._set_connected(False)
+        except Exception as ex:
+            self.report_error(f"Error during disconnect: {ex}", PIStatus.ERROR_CONNECTION_FAILED)
+
+    def _send_command(self, command, device_key=None) -> bool:
+        """
+        Send a raw GCS command to the specified device.
+
+        Args:
+            command: GCS command string to send
+            device_key: Tuple (ip, port, device_id) identifying the device
+
+        Returns:
+            True if command was sent successfully, False otherwise
+        """
+        if device_key is None:
+            self.report_error("device_key is required for _send_command", PIStatus.ERROR_COMMAND)
+            return False
+
+        self._require_connection()
+
+        try:
+            with self.lock:
+                device = self.devices[device_key]
+                device.send(command)
+            self.logger.debug(f"Sent command to device {device_key}: {command}")
+            return True
+        except (GCSError, KeyError) as ex:
+            self.report_error(f"Error sending command: {ex}", PIStatus.ERROR_COMMAND)
+            return False
+
+    def _read_reply(self, device_key=None):
+        """
+        Read a reply from the specified device.
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+
+        Returns:
+            Reply string or None if error
+        """
+        if device_key is None:
+            self.report_error("device_key is required for _read_reply", PIStatus.ERROR_COMMAND)
+            return None
+
+        self._require_connection()
+
+        try:
+            device = self.devices[device_key]
+            reply = device.read()
+            self.logger.debug(f"Read reply from device {device_key}: {reply}")
+            return reply
+        except (GCSError, KeyError) as ex:
+            self.report_error(f"Error reading reply: {ex}", PIStatus.ERROR_COMMAND)
+            return None

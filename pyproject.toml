@@ -3,11 +3,11 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Basic information about your project.
 name = "pi" 
 version = "0.1.0" 
 dependencies = [
-  "pipython"
+  "pipython",
+  "hardware_device_base@git+https://github.com/COO-Utilities/hardware_device_base"
 ]
 requires-python = ">=3.9"
 authors = [
@@ -19,9 +19,6 @@ maintainers = [
 description = "Low-level Python library to control PI 863 and PI 663 motion controllers using the [pipython](https://pypi.org/project/pipython/) library."
 readme = "README.md" 
 license = "MIT"
-classifiers = [
-  "Programming Language :: Python"
-]
 
 [project.urls]
 # Various URLs related to your project. These links are displayed on PyPI.
@@ -42,9 +39,8 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.setuptools.packages.find]
-where = ["."]
-
 [tool.setuptools]
-py-modules = ["pi"]
+packages = ["pi"]
 
+[tool.setuptools.package-dir]
+pi = "."
