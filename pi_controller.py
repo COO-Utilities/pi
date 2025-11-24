@@ -35,12 +35,14 @@ class PIControllerBase(HardwareMotionBase):
     over TCP/IP via a terminal server.
     """
 
-    def __init__(self, log: bool = True):
+    def __init__(self, log: bool = True, logfile: str = None):
         """
         Initialize the controller and set up logging.
         """
         # set up logging
-        super().__init__(log)
+        if logfile is None:
+            logfile = self.__class__.__module__.rsplit(".", 1)[-1]
+        super().__init__(log, logfile)
 
         self.devices = {}  # {(ip, port, device_id): GCSDevice instance}
         self.daisy_chains = {}  # {(ip, port): [(device_id, desc)]}
@@ -118,7 +120,7 @@ class PIControllerBase(HardwareMotionBase):
         """
         for device_key in list(self.devices.keys()):
             self.devices[device_key].CloseConnection()
-            self.logger.debug(f"Disconnected device {device_key}")
+            self.report_info(f"Disconnected device {device_key}", PIStatus.OK)
         self.devices.clear()
         self._set_connected(False)
         self.report_info("Disconnected from all PI controllers", PIStatus.OK)
@@ -218,7 +220,7 @@ class PIControllerBase(HardwareMotionBase):
         except GCSError as ex:
             self.report_error(f"Error halting motion: {ex}", PIStatus.ERROR_POSITION)
 
-    def set_pos(self, pos, device_key=None, axis=None, blocking=True) -> bool:
+    def set_pos(self, pos, device_key=None, axis=None, blocking=True, timeout=20) -> bool:
         """
         Set the position.
 
@@ -227,6 +229,7 @@ class PIControllerBase(HardwareMotionBase):
             device_key: Tuple (ip, port, device_id) identifying the device
             axis: Axis to move
             blocking: If True, wait until move is complete
+            timeout: Timeout in seconds for blocking operation
 
         Returns:
             True if successful, False otherwise
@@ -239,7 +242,14 @@ class PIControllerBase(HardwareMotionBase):
         try:
             self.devices[device_key].MOV(axis, pos)
             if blocking:
+                start_time = time.time()
                 while self.is_moving(device_key, axis):
+                    if time.time() - start_time > timeout:
+                        self.report_error(
+                            f"Move to position {pos} timed out after {timeout} seconds on axis {axis}",
+                            PIStatus.ERROR_TIMEOUT
+                        )
+                        return False
                     time.sleep(0.1)
             return True
         except GCSError as ex:
@@ -285,9 +295,15 @@ class PIControllerBase(HardwareMotionBase):
             f"Saved position '{name}' for controller {serial}, axis {axis}: {pos}", PIStatus.OK
         )
 
-    def go_to_named_position(self, device_key, name, blocking=True):
+    def go_to_named_position(self, device_key, name, blocking=True, timeout=20):
         """
         Move the specified device's axis to a previously saved named position.
+
+        Args:
+            device_key: Tuple (ip, port, device_id) identifying the device
+            name: Name of the saved position
+            blocking: If True, wait until move is complete
+            timeout: Timeout in seconds for blocking operation
         """
         serial = self.get_serial_number(device_key)
 
@@ -317,7 +333,7 @@ class PIControllerBase(HardwareMotionBase):
             return
 
         axis, pos = positions[serial][name]
-        self.set_pos(pos, device_key, axis, blocking)
+        self.set_pos(pos, device_key, axis, blocking, timeout)
         self.report_info(
             f"Moved axis {axis} to named position '{name}' for controller {serial}: {pos}", PIStatus.OK
         )
@@ -400,7 +416,7 @@ class PIControllerBase(HardwareMotionBase):
         self._require_connection()
         return self.devices[device_key].qFRF(axis)[axis]
 
-    def home(self, device_key=None, axis=None, method="FRF", blocking=True, timeout=30) -> bool: # pylint:disable=too-many-arguments
+    def home(self, device_key=None, axis=None, method="FRF", blocking=True, timeout=20) -> bool: # pylint:disable=too-many-arguments
         """
         Home the hardware motion device.
 
