@@ -17,11 +17,11 @@ def test_connect_tcpip_daisy_chain(mock_gcs_device_cls):
     mock_device.dcid = 1
     mock_gcs_device_cls.return_value = mock_device
 
-    controller = PIControllerBase()
+    controller = PIControllerBase(log=False)
     controller.connect_tcpip_daisy_chain("192.168.29.100", 10003)
 
     mock_device.OpenTCPIPDaisyChain.assert_called_once_with("192.168.29.100", 10003)
-    assert controller.connected
+    assert controller.is_connected()
     assert controller.daisy_chains[("192.168.29.100", 10003)] == [
         (1, "PI Device 1"),
         (2, "PI Device 2"),
@@ -34,7 +34,7 @@ def test_connect_tcpip_daisy_chain(mock_gcs_device_cls):
 
 def test_list_devices_on_chain():
     """Test listing devices on a daisy chain."""
-    controller = PIControllerBase(quiet=True)
+    controller = PIControllerBase(log=False)
     ip_port = ("192.168.29.100", 10003)
     controller.daisy_chains[ip_port] = [(1, "PI Device 1"), (2, "PI Device 2")]
 
@@ -48,38 +48,38 @@ def test_connect_disconnect_device(mock_gcs_device_cls):
     mock_device = MagicMock()
     mock_gcs_device_cls.return_value = mock_device
 
-    controller = PIControllerBase(quiet=True)
+    controller = PIControllerBase(log=False)
     controller.connect_tcp("127.0.0.1", 50000)
     device_key = ("127.0.0.1", 50000, 1)
 
     mock_device.ConnectTCPIP.assert_called_once_with("127.0.0.1", 50000)
-    assert controller.connected
+    assert controller.is_connected()
 
     controller.disconnect_device(device_key)
     mock_device.CloseConnection.assert_called_once()
-    assert not controller.connected
+    assert not controller.is_connected()
 
 
 def test_disconnect_all():
     """Test disconnecting all devices."""
     mock_device1 = MagicMock()
     mock_device2 = MagicMock()
-    controller = PIControllerBase(quiet=True)
+    controller = PIControllerBase(log=False)
     controller.devices[("ip", 1, 1)] = mock_device1
     controller.devices[("ip", 1, 2)] = mock_device2
-    controller.connected = True
+    controller._set_connected(True)
 
     controller.disconnect_all()
     mock_device1.CloseConnection.assert_called_once()
     mock_device2.CloseConnection.assert_called_once()
     assert not controller.devices
-    assert not controller.connected
+    assert not controller.is_connected()
 
 
 def test_get_serial_number():
     """Test getting the serial number of a device."""
-    controller = PIControllerBase(quiet=True)
-    controller.connected = True
+    controller = PIControllerBase(log=False)
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     device = MagicMock()
     device.qIDN.return_value = "PI,Model,123456,1.0.0"
@@ -90,28 +90,28 @@ def test_get_serial_number():
 
 
 @patch("pi.pi_controller.GCSDevice")
-def test_get_position(mock_gcs_device_cls):
+def test_get_pos(mock_gcs_device_cls):
     """Test getting the position of an axis."""
     mock_device = MagicMock()
     mock_gcs_device_cls.return_value = mock_device
 
-    controller = PIControllerBase(quiet=True)
-    controller.connected = True
+    controller = PIControllerBase(log=False)
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     mock_device.axes = ["1", "2"]
     mock_device.qPOS.return_value = {"1": 42.0}
     controller.devices[device_key] = mock_device
 
-    pos = controller.get_position(device_key, "1")
+    pos = controller.get_pos(device_key, "1")
     assert pos == 42.0
     mock_device.qPOS.assert_called_once_with("1")
 
 
 def test_set_named_position(tmp_path):
     """Test setting a named position."""
-    controller = PIControllerBase(quiet=True)
+    controller = PIControllerBase(log=False)
     controller.named_position_file = tmp_path / "positions.json"
-    controller.connected = True
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     device = MagicMock()
     device.axes = ["1"]
@@ -132,14 +132,14 @@ def test_set_named_position(tmp_path):
 
 def test_go_to_named_position(tmp_path):
     """Test going to a named position."""
-    controller = PIControllerBase(quiet=True)
+    controller = PIControllerBase(log=False)
     controller.named_position_file = tmp_path / "positions.json"
-    controller.connected = True
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     device = MagicMock()
     controller.devices[device_key] = device
     controller.get_serial_number = MagicMock(return_value="123456")
-    controller.set_position = MagicMock()
+    controller.set_pos = MagicMock()
 
     # Prepare a named position file
     named_positions = {"123456": {"home": ["1", 42.0]}}
@@ -147,25 +147,25 @@ def test_go_to_named_position(tmp_path):
         json.dump(named_positions, file)
 
     controller.go_to_named_position(device_key, "home", blocking=False)
-    controller.set_position.assert_called_once_with(device_key, "1", 42.0, False)
+    controller.set_pos.assert_called_once_with(42.0, device_key, "1", False, 20)
 
 
 @patch("pi.pi_controller.GCSDevice")
-def test_reference_move_success(mock_gcs_device_cls):
-    """Test successful reference move."""
+def test_home_success(mock_gcs_device_cls):
+    """Test successful home (reference move)."""
     mock_device = MagicMock()
     mock_device.IsMoving.return_value = {"1": False}
     mock_gcs_device_cls.return_value = mock_device
 
-    controller = PIControllerBase(quiet=True)
-    controller.connected = True
+    controller = PIControllerBase(log=False)
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     controller.devices[device_key] = mock_device
 
     # Test allowed method
     for method in ["FRF", "FNL", "FPL"]:
         getattr(mock_device, method).reset_mock()
-        result = controller.reference_move(
+        result = controller.home(
             device_key, "1", method=method, blocking=True, timeout=1
         )
         assert result is True
@@ -173,35 +173,35 @@ def test_reference_move_success(mock_gcs_device_cls):
 
 
 @patch("pi.pi_controller.GCSDevice")
-def test_reference_move_invalid_method(mock_gcs_device_cls):
-    """Test reference move with an invalid method."""
+def test_home_invalid_method(mock_gcs_device_cls):
+    """Test home with an invalid method."""
     mock_device = MagicMock()
     mock_gcs_device_cls.return_value = mock_device
 
-    controller = PIControllerBase(quiet=True)
-    controller.connected = True
+    controller = PIControllerBase(log=False)
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     controller.devices[device_key] = mock_device
 
     # Test disallowed method
-    result = controller.reference_move(device_key, "1", method="INVALID", blocking=True)
+    result = controller.home(device_key, "1", method="INVALID", blocking=True)
     assert result is False
 
 
 @patch("pi.pi_controller.GCSDevice")
-def test_reference_move_timeout(mock_gcs_device_cls):
-    """Test reference move with a timeout."""
+def test_home_timeout(mock_gcs_device_cls):
+    """Test home with a timeout."""
     mock_device = MagicMock()
     # Simulate IsMoving always True
     mock_device.IsMoving.return_value = {"1": True}
     mock_gcs_device_cls.return_value = mock_device
 
-    controller = PIControllerBase(quiet=True)
-    controller.connected = True
+    controller = PIControllerBase(log=False)
+    controller._set_connected(True)
     device_key = ("ip", 1, 1)
     controller.devices[device_key] = mock_device
 
-    result = controller.reference_move(
+    result = controller.home(
         device_key, "1", method="FRF", blocking=True, timeout=0.1
     )
     assert result is False

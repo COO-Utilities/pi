@@ -177,7 +177,7 @@ class PIControllerBase(HardwareMotionBase):
             self.report_error(f"Error getting position: {ex}", PIStatus.ERROR_POSITION)
             return None
 
-    def is_closed_loop(self, device_key=None, axis=None) -> bool:
+    def is_loop_closed(self, device_key=None, axis=None) -> bool:
         """
         Check if the hardware motion device servo is enabled (closed loop).
 
@@ -189,7 +189,7 @@ class PIControllerBase(HardwareMotionBase):
             True if servo is enabled, False otherwise
         """
         if device_key is None or axis is None:
-            self.report_error("device_key and axis are required for is_closed_loop", PIStatus.ERROR_SERVO)
+            self.report_error("device_key and axis are required for is_loop_closed", PIStatus.ERROR_SERVO)
             return False
 
         self._require_connection()
