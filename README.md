@@ -39,19 +39,19 @@ for device_id, desc in devices:
 device_key = ("192.168.29.100", 10005, 2)
 print("Now on device 2:", controller.get_idn(device_key))
 
-# Check if axis '1' is referenced
-is_referenced = controller.is_controller_referenced(device_key, '1')
+# Check if axis '1' is referenced (homed)
+is_referenced = controller.is_homed(device_key, '1')
 print("Axis 1 referenced:", is_referenced)
 
-# Perform a reference move (home) on axis '1'
-success = controller.reference_move(device_key, '1', method="FRF", blocking=True, timeout=30)
+# Perform a home (reference move) on axis '1'
+success = controller.home(device_key, '1', method="FRF", blocking=True, timeout=30)
 if success:
-    print("Reference move completed successfully.")
+    print("Home completed successfully.")
 else:
-    print("Reference move failed or timed out.")
+    print("Home failed or timed out.")
 
 # Move axis 1 to position 12.0
-controller.set_position(device_key, '1', 12.0)
+controller.set_pos(12.0, device_key, '1')
 
 # Save current position as "home"
 controller.set_named_position(device_key, '1', 'home')
@@ -72,11 +72,11 @@ controller.disconnect_all()
 | `get_idn(device_key)`                        | Get the controller identification string     |
 | `get_serial_number(device_key)`              | Get the serial number from the IDN           |
 | `get_axes(device_key)`                       | Return available axes                        |
-| `get_position(device_key, axis_index)`       | Get current position of axis by index        |
-| `servo_status(device_key, axis)`             | Check if the servo on an axis is enabled     |
+| `get_pos(device_key, axis)`                  | Get current position of axis                 |
+| `is_loop_closed(device_key, axis)`           | Check if the servo on an axis is enabled     |
 | `get_error_code(device_key)`                 | Get the controller's last error code         |
 | `halt_motion(device_key)`                    | Stop all motion on the controller            |
-| `set_position(device_key, axis, position)`   | Move an axis to a position                   |
+| `set_pos(pos, device_key, axis)`             | Move an axis to a position                   |
 | `set_named_position(device_key, axis, name)` | Save a position under a named label          |
 | `go_to_named_position(name)`                 | Move to a previously saved named position    |
 | `disconnect_device(device_key)`              | Disconnect a single device                   |
@@ -84,9 +84,9 @@ controller.disconnect_all()
 
 
 ## Logging
-By default, the controller logs info and error messages to the console. You can suppress logs (except warnings/errors) by passing quiet=True:
+By default, the controller logs info and error messages to the console. You can disable logging by passing log=False:
 ```python
-controller = PIControllerBase(quiet=True)
+controller = PIControllerBase(log=False)
 ```
 
 ## 🧪 Testing

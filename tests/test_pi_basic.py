@@ -7,8 +7,8 @@ from pi import PIControllerBase
 
 def test_initialization():
     """Test that the PIControllerBase initializes correctly."""
-    controller = PIControllerBase()
-    assert not controller.connected
+    controller = PIControllerBase(log=False)
+    assert not controller.is_connected()
 
 
 def test_connection_fail():
