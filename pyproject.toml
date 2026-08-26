@@ -7,7 +7,7 @@ name = "pi"
 version = "0.1.0" 
 dependencies = [
   "pipython",
-  "hardware_device_base@git+https://github.com/COO-Utilities/hardware_device_base"
+  "hardware_device_base@git+https://github.com/COO-Utilities/hardware_device_base@v1.0.0"
 ]
 requires-python = ">=3.9"
 authors = [
