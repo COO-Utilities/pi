@@ -445,7 +445,7 @@ class PIControllerBase(HardwareMotionBase):
         device = self.devices[device_key]
 
         # Check if the device supports the specified method
-        if not getattr(device, "Has%s", method)():
+        if not getattr(device, f"Has{method}")():
             self.report_error(f"Device {device_key} does not support method '{method}'", PIStatus.ERROR_INVALID_METHOD)
             return False
 
