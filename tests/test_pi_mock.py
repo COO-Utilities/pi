@@ -1,6 +1,7 @@
 """Test cases for the PIControllerBase class in pi_controller module."""
 import json
 from unittest.mock import MagicMock, patch
+import pytest
 # pylint: disable=import-error, no-name-in-module
 from pi import PIControllerBase
 
@@ -73,6 +74,61 @@ def test_disconnect_all():
     mock_device1.CloseConnection.assert_called_once()
     mock_device2.CloseConnection.assert_called_once()
     assert not controller.devices
+    assert not controller.is_connected()
+
+
+def _daisy_chain_devices(mock_gcs_device_cls):
+    """Connect a two-device daisy chain and return its (owner, second) mocks."""
+    owner = MagicMock()
+    owner.OpenTCPIPDaisyChain.return_value = ["PI Device 1", "PI Device 2"]
+    second = MagicMock()
+    mock_gcs_device_cls.side_effect = [owner, second]
+    return owner, second
+
+
+@patch("pi.pi_controller.GCSDevice")
+def test_disconnect_all_closes_daisy_chain(mock_gcs_device_cls):
+    """Test that disconnect_all releases the daisy chain connection."""
+    owner, second = _daisy_chain_devices(mock_gcs_device_cls)
+    controller = PIControllerBase(log=False)
+    controller.connect_tcpip_daisy_chain("192.168.29.100", 10005, blocking=False)
+
+    controller.disconnect_all()
+    owner.CloseConnection.assert_called_once()
+    second.CloseConnection.assert_called_once()
+    owner.CloseDaisyChain.assert_called_once()
+    second.CloseDaisyChain.assert_not_called()
+    assert not controller.daisy_chains
+
+
+@patch("pi.pi_controller.GCSDevice")
+def test_disconnect_device_closes_chain_after_last_device(mock_gcs_device_cls):
+    """Test that the daisy chain closes only once its last device is disconnected."""
+    owner, _ = _daisy_chain_devices(mock_gcs_device_cls)
+    controller = PIControllerBase(log=False)
+    controller.connect_tcpip_daisy_chain("192.168.29.100", 10005, blocking=False)
+
+    controller.disconnect_device(("192.168.29.100", 10005, 1))
+    owner.CloseDaisyChain.assert_not_called()
+    assert controller.is_connected()
+
+    controller.disconnect_device(("192.168.29.100", 10005, 2))
+    owner.CloseDaisyChain.assert_called_once()
+    assert not controller.is_connected()
+
+
+@patch("pi.pi_controller.GCSDevice")
+def test_failed_daisy_chain_connect_closes_chain(mock_gcs_device_cls):
+    """Test that a failed connect releases the daisy chain it opened."""
+    owner, second = _daisy_chain_devices(mock_gcs_device_cls)
+    second.ConnectDaisyChainDevice.side_effect = RuntimeError("no answer")
+    controller = PIControllerBase(log=False)
+
+    with pytest.raises(RuntimeError):
+        controller.connect_tcpip_daisy_chain("192.168.29.100", 10005, blocking=False)
+    owner.CloseDaisyChain.assert_called_once()
+    assert not controller.devices
+    assert not controller.daisy_chains
     assert not controller.is_connected()
 
 

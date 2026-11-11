@@ -46,6 +46,8 @@ class PIControllerBase(HardwareMotionBase):
 
         self.devices = {}  # {(ip, port, device_id): GCSDevice instance}
         self.daisy_chains = {}  # {(ip, port): [(device_id, desc)]}
+        # Device that opened each chain; it holds the dcid that owns the TCP socket
+        self._chain_owners = {}  # {(ip, port): GCSDevice}
         self.named_position_file = "config/pi_named_positions.json"
 
     def _require_connection(self):
@@ -73,6 +75,24 @@ class PIControllerBase(HardwareMotionBase):
         """
         main_device = GCSDevice()
         devices = main_device.OpenTCPIPDaisyChain(ip_address, port)
+        self._chain_owners[(ip_address, port)] = main_device
+        try:
+            self._connect_chain_devices(main_device, ip_address, port, devices)
+        except Exception:
+            self._close_chain((ip_address, port))
+            raise
+
+        self._set_connected(True)
+
+        if blocking:
+            # Wait until all devices are ready
+            while not all(dev.IsControllerReady() for dev in self.devices.values()):
+                time.sleep(0.1)
+
+    def _connect_chain_devices(self, main_device, ip_address, port, devices):
+        """
+        Connect every available device on an opened daisy chain.
+        """
         dcid = main_device.dcid
 
         available = []
@@ -96,12 +116,17 @@ class PIControllerBase(HardwareMotionBase):
             self.devices[(ip_address, port, device_id)] = dev
             self.report_info(f"[{ip_address}:{port}] Connected to device {device_id}: {desc}", PIStatus.CONNECTED)
 
-        self._set_connected(True)
-
-        if blocking:
-            # Wait until all devices are ready
-            while not all(dev.IsControllerReady() for dev in self.devices.values()):
-                time.sleep(0.1)
+    def _close_chain(self, chain_key):
+        """
+        Close the daisy chain at (ip, port), releasing its TCP connection.
+        """
+        owner = self._chain_owners.pop(chain_key, None)
+        self.daisy_chains.pop(chain_key, None)
+        for device_key in [key for key in self.devices if key[:2] == chain_key]:
+            del self.devices[device_key]
+        if owner is not None:
+            owner.CloseDaisyChain()
+            self.report_info(f"Closed daisy chain {chain_key}", PIStatus.OK)
 
     def disconnect_device(self, device_key):
         """
@@ -111,6 +136,9 @@ class PIControllerBase(HardwareMotionBase):
             self.devices[device_key].CloseConnection()
             del self.devices[device_key]
             self.report_info(f"Disconnected device {device_key}", PIStatus.OK)
+            chain_key = device_key[:2]
+            if not any(key[:2] == chain_key for key in self.devices):
+                self._close_chain(chain_key)
         if not self.devices:
             self._set_connected(False)
 
@@ -122,6 +150,8 @@ class PIControllerBase(HardwareMotionBase):
             self.devices[device_key].CloseConnection()
             self.report_info(f"Disconnected device {device_key}", PIStatus.OK)
         self.devices.clear()
+        for chain_key in list(self._chain_owners):
+            self._close_chain(chain_key)
         self._set_connected(False)
         self.report_info("Disconnected from all PI controllers", PIStatus.OK)
 
