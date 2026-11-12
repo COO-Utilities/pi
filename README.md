@@ -80,7 +80,7 @@ controller.disconnect_all()
 | `set_named_position(device_key, axis, name)` | Save a position under a named label          |
 | `go_to_named_position(name)`                 | Move to a previously saved named position    |
 | `disconnect_device(device_key)`              | Disconnect a single device                   |
-| `disconnect_all()`                           | Disconnect all devices                       |
+| `disconnect_all()`                           | Disconnect all devices and close their daisy chains |
 
 
 ## Logging
