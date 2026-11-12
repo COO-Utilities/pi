@@ -244,6 +244,21 @@ def test_home_invalid_method(mock_gcs_device_cls):
     assert result is False
 
 
+def test_home_unsupported_method():
+    """Test that home refuses a method the device reports it does not support."""
+    mock_device = MagicMock()
+    mock_device.HasFRF.return_value = False
+
+    controller = PIControllerBase(log=False)
+    controller._set_connected(True)
+    device_key = ("ip", 1, 1)
+    controller.devices[device_key] = mock_device
+
+    assert controller.home(device_key, "1", method="FRF", blocking=False) is False
+    mock_device.HasFRF.assert_called_once_with()
+    mock_device.FRF.assert_not_called()
+
+
 @patch("pi.pi_controller.GCSDevice")
 def test_home_timeout(mock_gcs_device_cls):
     """Test home with a timeout."""
