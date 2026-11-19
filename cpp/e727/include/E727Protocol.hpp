@@ -34,7 +34,7 @@ namespace e727 {
  * Position of both axes in milliradians, the unit the wire carries.
  *
  * x and y follow wire order. Which physical axis each one drives is established with
- * `e727_spi_check axis`; confirm it before relying on the names.
+ * `e727_spi_check move`; confirm it before relying on the names.
  */
 struct Milliradians {
     double x = 0.0;
