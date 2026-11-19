@@ -10,12 +10,56 @@ Each device has its own directory with its own namespace, units, headers and too
 ## Requirements
 
 - Linux, GCC 13 or newer (C++23), CMake 3.25 or newer
-- FTDI LibFT4222 SDK for anything that touches hardware, tested with 1.4.4.232. The default
-  search location is `/usr/local` (`include/libft4222.h`, `include/ftd2xx.h`,
-  `include/WinTypes.h`, `lib/libft4222.so`), which is where the SDK's `install4222.sh` puts it.
-  Point `FT4222_ROOT` at an unpacked SDK directory to use a copy elsewhere.
+- FTDI LibFT4222 SDK for anything that touches hardware (see below), tested with 1.4.4.232
 
-Without the SDK, CMake builds the protocol headers and their tests only.
+## LibFT4222 SDK
+
+The SPI link (`E727SpiLink.hpp`) and every tool link against FTDI's LibFT4222, a closed-source
+library that bundles FTDI's D2XX driver. It is not included in this repository and has to be
+installed on each machine that talks to hardware.
+
+Without it, CMake prints `LibFT4222 not found under FT4222_ROOT=...` and builds the protocol
+header and its tests only. That is enough for development away from the hardware.
+
+### Download
+
+Get "LibFT4222 Linux" from the [FT4222H product page](https://ftdichip.com/products/ft4222h/) in a
+web browser. The FTDI site blocks scripted downloads, so `curl` and `wget` receive an HTML page
+instead of the archive. Version 1.4.4.232 arrives as `libft4222-linux-1.4.4.232.zip`, which
+contains a `.tgz`:
+
+```bash
+unzip libft4222-linux-1.4.4.232.zip
+mkdir libft4222-1.4.4.232
+tar -xzf libft4222-linux-1.4.4.232.tgz -C libft4222-1.4.4.232
+```
+
+### Install system-wide (recommended)
+
+```bash
+cd libft4222-1.4.4.232
+sudo ./install4222.sh
+sudo ldconfig
+```
+
+`install4222.sh` copies the library to `/usr/local/lib` and `libft4222.h`, `ftd2xx.h` and
+`WinTypes.h` to `/usr/local/include`, which is where CMake looks by default. It does not run
+`ldconfig`, so run that yourself or programs outside the build tree will not find the library.
+
+### Use an unpacked copy without root
+
+The archive keeps each architecture's library in `build-<arch>/` under a versioned name. Link the
+one for your machine to the top of the directory, then point `FT4222_ROOT` at it:
+
+```bash
+cd libft4222-1.4.4.232
+ln -s build-x86_64/libft4222.so.1.4.4.232 libft4222.so
+cmake -S cpp -B cpp/build -DFT4222_ROOT=/path/to/libft4222-1.4.4.232
+```
+
+CMake records the directory in the build tree's RPATH, so the built tools run without
+`LD_LIBRARY_PATH`.
+
 
 ## Build
 

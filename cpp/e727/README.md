@@ -97,6 +97,62 @@ e727_spi_check speed --csv speed.csv
 - Ctrl-C stops a run early and parks the mirror at the centre with the loops open.
 - Amplitudes default to a fraction of the range, so they scale with `--range`.
 
+## Changing settings
+
+Every setting is a named `constexpr` or a constructor or command-line argument. Use the run-time
+options where they exist, and edit constants only when the controller's configuration changes.
+After any edit, rebuild, run `ctest`, then work through the `e727_spi_check` tiers in order.
+
+### At run time, no rebuild
+
+| Setting | In code | In `e727_spi_check` |
+|---|---|---|
+| Travel range | `SpiController{deviceIndex, TravelRange{.min = 2.0, .max = 33.0}}` | `--range 2:33` |
+| Which FT4222 | `deviceIndex`, the first constructor argument | `--device 1` |
+| Custom USB ids | `registerUsbId(vendorId, productId)` before constructing | `--vid`, `--pid` |
+| Motion and timing | not applicable | `--amplitude`, `--rate`, `--duration`, `--frames` |
+
+### Default travel range
+
+`kDefaultRange` in `include/E727Protocol.hpp`. Change it only if the controller is reconfigured,
+since a narrower window for one application belongs in the constructor argument instead.
+`tests/E727ProtocolTest.cpp` asserts the 0 to 35 mrad centre and span, so update it alongside.
+
+### Protocol, in `include/E727Protocol.hpp`
+
+| What | Where |
+|---|---|
+| Frame size and byte offsets | `kFrameSize`, `kProtocolIdByte` to `kChecksumByte` |
+| Fixed header bytes | `kProtocolId`, `kAxisCount`, `kNoFlags` |
+| Servo codes | `enum class Servo` |
+| CRC | `kCrcInit`, `kCrcPolynomial` |
+| Wire unit | `buildFrame` and `positionOf` take and return `Milliradians` |
+
+The frozen vectors at the bottom of the header are `static_assert`s, so any encoding change fails
+the build on purpose. GCC prints what the new code computes, in decimal, as the left side of
+`note: the comparison reduces to '(30990 == 4660)'`. Update a vector only after
+`e727_spi_check readback` shows the controller accepts the new encoding.
+
+A controller configured in a unit other than milliradians needs the wire unit changed, not only
+the range.
+
+### SPI link, in `include/E727SpiLink.hpp`
+
+`kSpiMode`, `kSpiClockDivider`, `kSpiClockPolarity`, `kSpiClockPhase` and `kSlaveSelectSs0`. The
+SPI clock is the FT4222 system clock divided by `kSpiClockDivider`. The system clock itself is
+never set, for the reason given under [Protocol](#protocol).
+
+### Diagnostic tool, in `tools/e727_spi_check/`
+
+| File | Constants | Affects |
+|---|---|---|
+| `Options.hpp` | `kDefaultRateHz`, `kDefaultDurationSeconds`, `kDefaultFrameCount`, `kDefaultAmplitudeFraction`, `kFtdiVendorId` | Defaults for the command-line flags |
+| `Session.hpp`, `Session.cpp` | `kSettleDelay`, `kHandshakeRepeats` | Cold-start handshake |
+| `MotionChecks.cpp` | `kAxisCycleSeconds`, `kAxisUpdateHz`, `kScaleSweepMarginFraction`, `kScaleSweepPoints`, `kScaleSamplesPerPoint`, `kUnitySlopeTolerance`, `kLatencyDetectionFraction` | `axis`, `scale`, `latency` |
+| `TimingChecks.cpp` | `kTrackingLoopHz`, `kDefaultSpeedFrames` | `speed` target rate and length |
+| `Statistics.cpp` | `kOutlierMultiples`, `kOutlierSigmas`, `kHistogramBuckets` | Timing reports |
+| `ChipChecks.cpp` | `kClockStateFile` | Where `probe` records the clock rate |
+
 ## Not yet confirmed on hardware
 
 - Reply checksum convention: `readback`
