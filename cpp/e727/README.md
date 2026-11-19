@@ -9,6 +9,7 @@ mirror, through an FTDI FT4222H USB-to-SPI bridge, plus the `e727_spi_check` dia
 | `include/E727SpiLink.hpp` | Device discovery and `e727::SpiController` | yes |
 | `tests/E727ProtocolTest.cpp` | Protocol tests, mostly `static_assert`s | no |
 | `tools/e727_spi_check/` | Tiered hardware diagnostic | yes |
+| `cmake/FetchLibFt4222.cmake` | Unpacks the SHA256-pinned SDK zip when `PI_FETCH_FT4222` is on | not applicable |
 
 Build instructions and SDK setup are in [`../README.md`](../README.md).
 

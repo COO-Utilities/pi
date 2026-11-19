@@ -13,9 +13,16 @@ if(BUILD_TESTING)
 endif()
 
 # SPI link and diagnostic tool: need the FTDI LibFT4222 SDK
+option(PI_FETCH_FT4222 "Unpack the SHA256-pinned LibFT4222 archive at FT4222_SDK_URL instead of searching FT4222_ROOT" OFF)
 set(FT4222_ROOT "/usr/local" CACHE PATH "Install prefix or unpacked directory of the LibFT4222 SDK")
-find_path(FT4222_INCLUDE_DIR libft4222.h HINTS "${FT4222_ROOT}/include" "${FT4222_ROOT}")
-find_library(FT4222_LIBRARY ft4222 HINTS "${FT4222_ROOT}/lib" "${FT4222_ROOT}")
+
+if(PI_FETCH_FT4222)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchLibFt4222.cmake")
+    fetch_libft4222(FT4222_INCLUDE_DIR FT4222_LIBRARY)
+else()
+    find_path(FT4222_INCLUDE_DIR libft4222.h HINTS "${FT4222_ROOT}/include" "${FT4222_ROOT}")
+    find_library(FT4222_LIBRARY ft4222 HINTS "${FT4222_ROOT}/lib" "${FT4222_ROOT}")
+endif()
 
 if(NOT FT4222_INCLUDE_DIR OR NOT FT4222_LIBRARY)
     message(STATUS "LibFT4222 not found under FT4222_ROOT=${FT4222_ROOT}; building the E-727 protocol only")

@@ -60,6 +60,21 @@ cmake -S cpp -B cpp/build -DFT4222_ROOT=/path/to/libft4222-1.4.4.232
 CMake records the directory in the build tree's RPATH, so the built tools run without
 `LD_LIBRARY_PATH`.
 
+### Use the pinned archive, no install
+
+With `PI_FETCH_FT4222=ON`, CMake unpacks the downloaded zip into the build tree and uses it in
+place of any installed copy. The archive's SHA256 is pinned in
+[`e727/cmake/FetchLibFt4222.cmake`](e727/cmake/FetchLibFt4222.cmake), so configuration stops
+with a hash mismatch on any other file, and every host builds against the same library.
+
+```bash
+cmake -S cpp -B cpp/build -DPI_FETCH_FT4222=ON \
+      -DFT4222_SDK_URL=/absolute/path/to/libft4222-linux-1.4.4.232.zip
+```
+
+`FT4222_SDK_URL` also accepts an `https://` URL, but not FTDI's own, which serves a browser
+challenge page to scripts. To move to a newer SDK, update `FT4222_SDK_VERSION` and
+`FT4222_SDK_SHA256` together in that file.
 
 ## Build
 
@@ -74,6 +89,8 @@ ctest --test-dir cpp/build
 | CMake option | Default | Purpose |
 |---|---|---|
 | `FT4222_ROOT` | `/usr/local` | Install prefix or unpacked directory of the LibFT4222 SDK |
+| `PI_FETCH_FT4222` | `OFF` | Unpack the SHA256-pinned SDK zip at `FT4222_SDK_URL` instead of searching `FT4222_ROOT` |
+| `FT4222_SDK_URL` | empty | Absolute path or URL of the SDK zip, required when `PI_FETCH_FT4222` is `ON` |
 | `PI_WARNINGS_AS_ERRORS` | `OFF` | Build with `-Werror` |
 | `CMAKE_BUILD_TYPE` | `Release` | Timing diagnostics are only meaningful from an optimised build |
 
