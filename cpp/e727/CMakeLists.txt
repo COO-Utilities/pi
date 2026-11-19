@@ -29,3 +29,15 @@ add_library(e727::spi ALIAS e727_spi)
 # SYSTEM keeps vendor header warnings out of our -Werror builds
 target_include_directories(e727_spi SYSTEM INTERFACE "${FT4222_INCLUDE_DIR}")
 target_link_libraries(e727_spi INTERFACE e727::protocol "${FT4222_LIBRARY}" Threads::Threads)
+
+add_executable(e727_spi_check
+    tools/e727_spi_check/main.cpp
+    tools/e727_spi_check/Options.cpp
+    tools/e727_spi_check/Report.cpp
+    tools/e727_spi_check/Session.cpp
+    tools/e727_spi_check/Statistics.cpp
+    tools/e727_spi_check/ChipChecks.cpp
+    tools/e727_spi_check/QuietChecks.cpp
+    tools/e727_spi_check/MotionChecks.cpp
+    tools/e727_spi_check/TimingChecks.cpp)
+target_link_libraries(e727_spi_check PRIVATE e727::spi pi_warnings)
