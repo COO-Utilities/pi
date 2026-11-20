@@ -89,6 +89,9 @@ By default, the controller logs info and error messages to the console. You can 
 controller = PIControllerBase(log=False)
 ```
 
+## C++ interface to the PI E-727
+A header-only C++23 interface to the PI E-727 fast steering mirror controller over an FT4222 USB-to-SPI bridge, with a hardware diagnostic tool, lives in [`cpp/`](cpp/README.md). It is independent of the Python package. Talking to hardware requires FTDI's LibFT4222 SDK, which is not bundled; [`cpp/README.md`](cpp/README.md#libft4222-sdk) covers where to get it and how to install it.
+
 ## 🧪 Testing
 Unit tests are located in `tests/` directory and use `pytest` with `unittest.mock` to simulate hardware behavior — no physical PI controller is required.
 
