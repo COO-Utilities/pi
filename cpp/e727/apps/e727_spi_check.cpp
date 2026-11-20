@@ -2,6 +2,10 @@
  * @file e727_spi_check.cpp
  * @brief Bring-up diagnostic for the PI E-727 over an FT4222 USB-to-SPI bridge
  *
+ * Hardware requirement: an FTDI FT4222H between the host and the E-727, driven through FTDI's
+ * LibFT4222. Every mode, including probe, works only with that chip; it does not test other
+ * USB-to-SPI adapters.
+ *
  * Run the modes in order, since each assumes the one before it passed:
  *   probe     find and open the FT4222, no controller needed
  *   readback  exchange open-loop frames at the centre and validate the replies
@@ -497,7 +501,9 @@ constexpr std::array kModes{
 };
 
 void printUsage() {
-    println("Usage: e727_spi_check <mode> [options]\n\nModes, in the order to run them:");
+    println("Usage: e727_spi_check <mode> [options]");
+    println("Requires an FTDI FT4222H USB-to-SPI bridge between this host and the E-727.\n");
+    println("Modes, in the order to run them:");
     for (const Mode& mode : kModes) {
         println("  {:<10}{}", mode.name, mode.summary);
     }

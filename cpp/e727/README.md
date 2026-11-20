@@ -3,6 +3,10 @@
 Header-only C++23 interface to the PI E-727 piezo controller that drives the HISPEC fast steering
 mirror, through an FTDI FT4222H USB-to-SPI bridge, plus the `e727_spi_check` diagnostic tool.
 
+> **Requires an FTDI FT4222H.** Everything except `E727Protocol.hpp` talks to the controller
+> through FTDI's LibFT4222, which drives only that chip. Other USB-to-SPI adapters are not
+> supported.
+
 | Path | Purpose | Needs the SDK |
 |---|---|---|
 | `include/E727Protocol.hpp` | Units, travel range, frame codec, CRC; usable at compile time | no |

@@ -4,6 +4,7 @@
  *
  * Everything expressible as a constant expression is a static_assert, so a regression fails the
  * build. The few checks that need runtime (string formatting, a numeric sweep) run from main.
+ * Needs neither an FT4222 nor its SDK.
  */
 
 #include <algorithm>

@@ -1,4 +1,7 @@
 # PI E-727 fast steering mirror controller over an FT4222 USB-to-SPI bridge
+#
+# e727::protocol is transport independent. e727::spi and e727_spi_check work only with an FTDI
+# FT4222H, through FTDI's LibFT4222, and are skipped when that SDK is not found.
 
 # Protocol: standard library only, always available
 add_library(e727_protocol INTERFACE)

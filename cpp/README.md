@@ -10,7 +10,8 @@ Each device has its own directory with its own namespace, units, headers and app
 ## Requirements
 
 - Linux, GCC 13 or newer (C++23), CMake 3.25 or newer
-- FTDI LibFT4222 SDK for anything that touches hardware (see below), tested with 1.4.4.232
+- An FTDI FT4222H USB-to-SPI bridge between the host and the controller, and FTDI's LibFT4222 SDK
+  to drive it (see below), tested with 1.4.4.232. Other USB-to-SPI adapters are not supported
 
 ## LibFT4222 SDK
 

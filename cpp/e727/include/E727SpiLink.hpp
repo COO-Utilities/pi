@@ -6,7 +6,11 @@
  * controller's reply, so moveTo() returns a position and there is no read-only frame. position()
  * re-sends the last command to take a reading without moving the target.
  *
- * Needs the FTDI D2XX and LibFT4222 SDK (tested version in cpp/README.md). Linux only.
+ * Hardware requirement: an FTDI FT4222H USB-to-SPI bridge between the host and the E-727.
+ * Device discovery, SPI configuration and every transfer go through FTDI's LibFT4222 and D2XX
+ * (tested version in cpp/README.md), which drive only that chip, so no other USB-to-SPI adapter
+ * or native SPI port works with this header. Supporting another bridge means a new link header;
+ * E727Protocol.hpp carries over unchanged. Linux only.
  */
 
 #pragma once
