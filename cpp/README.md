@@ -1,7 +1,7 @@
 # C++ interfaces
 
 Native interfaces to PI controllers, independent of the Python package in the repository root.
-Each device has its own directory with its own namespace, units, headers and tools.
+Each device has its own directory with its own namespace, units, headers and apps.
 
 | Device | Directory | Transport | Contents |
 |---|---|---|---|
@@ -57,7 +57,7 @@ ln -s build-x86_64/libft4222.so.1.4.4.232 libft4222.so
 cmake -S cpp -B cpp/build -DFT4222_ROOT=/path/to/libft4222-1.4.4.232
 ```
 
-CMake records the directory in the build tree's RPATH, so the built tools run without
+CMake records the directory in the build tree's RPATH, so the built apps run without
 `LD_LIBRARY_PATH`.
 
 ### Use the pinned archive, no install

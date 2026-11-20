@@ -37,5 +37,5 @@ add_library(e727::spi ALIAS e727_spi)
 target_include_directories(e727_spi SYSTEM INTERFACE "${FT4222_INCLUDE_DIR}")
 target_link_libraries(e727_spi INTERFACE e727::protocol "${FT4222_LIBRARY}" Threads::Threads)
 
-add_executable(e727_spi_check tools/e727_spi_check.cpp)
+add_executable(e727_spi_check apps/e727_spi_check.cpp)
 target_link_libraries(e727_spi_check PRIVATE e727::spi pi_warnings)
