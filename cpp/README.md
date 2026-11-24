@@ -95,6 +95,22 @@ ctest --test-dir cpp/build
 | `PI_WARNINGS_AS_ERRORS` | `OFF` | Build with `-Werror` |
 | `CMAKE_BUILD_TYPE` | `Release` | Timing diagnostics are only meaningful from an optimised build |
 
+## Install
+
+```bash
+sudo cmake --install cpp/build
+```
+
+This installs the headers to `include/e727`, `e727_spi_check` to `bin` and the `pi_cpp` CMake
+package under the install prefix (`/usr/local` by default). Without LibFT4222, or with
+`PI_FETCH_FT4222=ON`, only `E727Protocol.hpp` and `e727::protocol` are installed. Consumers link
+the targets:
+
+```cmake
+find_package(pi_cpp 0.1 REQUIRED)
+target_link_libraries(my_app PRIVATE e727::spi)  # or e727::protocol without the SDK
+```
+
 ## USB access without sudo
 
 D2XX opens the device through usbfs, so a non-root user needs a udev rule. `601c` is the FT4222H
