@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(pi_cpp
+    VERSION 0.1.0
     DESCRIPTION "C++ interfaces to PI controllers"
     LANGUAGES CXX)
 
@@ -21,5 +22,23 @@ target_compile_options(pi_warnings INTERFACE
     $<$<BOOL:${PI_WARNINGS_AS_ERRORS}>:-Werror>)
 
 include(CTest)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
+# e727/ turns this on when it installs e727::spi
+set(PI_CPP_HAS_SPI OFF)
 add_subdirectory(e727)
+
+# Installed as a CMake package, so consumers use find_package(pi_cpp) and link e727::protocol
+# or e727::spi
+set(PI_CPP_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/pi_cpp")
+install(EXPORT pi_cppTargets NAMESPACE e727:: DESTINATION "${PI_CPP_CMAKE_DIR}")
+configure_package_config_file(cmake/pi_cppConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/pi_cppConfig.cmake"
+    INSTALL_DESTINATION "${PI_CPP_CMAKE_DIR}")
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/pi_cppConfigVersion.cmake"
+    COMPATIBILITY SameMinorVersion)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/pi_cppConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/pi_cppConfigVersion.cmake"
+    DESTINATION "${PI_CPP_CMAKE_DIR}")
